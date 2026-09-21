@@ -1,11 +1,10 @@
 import { LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AnnotationSidebar } from "./components/AnnotationSidebar";
 import { DictionaryPopover } from "./components/DictionaryPopover";
 import { DocumentTabs } from "./components/DocumentTabs";
 import { EmptyState } from "./components/EmptyState";
 import { PageSidebar } from "./components/PageSidebar";
-import { PdfViewer } from "./components/PdfViewer";
 import { TitleBar } from "./components/TitleBar";
 import { Toolbar } from "./components/Toolbar";
 import { loadDocumentState, saveDocumentState } from "./services/storage";
@@ -18,6 +17,10 @@ import type {
   ViewPosition,
   VocabularyItem,
 } from "./types";
+
+const PdfViewer = lazy(() => import("./components/PdfViewer").then((module) => ({
+  default: module.PdfViewer,
+})));
 
 type ActiveDocument = {
   id: string;
@@ -37,10 +40,17 @@ type DocumentTab = ActiveDocument & {
 };
 
 const DEFAULT_STATE: DocumentState = {
+  schemaVersion: 2,
   annotations: [],
   vocabulary: [],
   currentPage: 1,
   scale: 1,
+};
+
+const DEFAULT_VIEW_POSITION: ViewPosition = {
+  page: 1,
+  pageOffset: 0,
+  scrollLeft: 0,
 };
 
 export default function App() {
@@ -59,6 +69,8 @@ export default function App() {
   const openSequenceRef = useRef(0);
   const activeTabIdRef = useRef<string | null>(null);
   const navigationNonceRef = useRef(0);
+  const latestTabsRef = useRef<DocumentTab[]>([]);
+  const saveTimersRef = useRef(new Map<string, number>());
 
   const requestPage = useCallback((page: number, position?: ViewPosition) => {
     setRequestedPage({ page, nonce: ++navigationNonceRef.current, position });
@@ -75,13 +87,37 @@ export default function App() {
   );
 
   useEffect(() => {
-    const timers = tabs
-      .filter((tab) => tab.stateReady && !tab.opening)
-      .map((tab) => window.setTimeout(() => {
-        void saveDocumentState(tab.id, tab.state);
-      }, 250));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    latestTabsRef.current = tabs;
+    tabs.filter((tab) => tab.stateReady && !tab.opening).forEach((tab) => {
+      const previousTimer = saveTimersRef.current.get(tab.tabId);
+      if (previousTimer) window.clearTimeout(previousTimer);
+      const timer = window.setTimeout(() => {
+        saveTimersRef.current.delete(tab.tabId);
+        void saveDocumentState(tab.id, tab.state).catch(() => undefined);
+      }, 250);
+      saveTimersRef.current.set(tab.tabId, timer);
+    });
   }, [tabs]);
+
+  const flushPendingSaves = useCallback(async () => {
+    saveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    saveTimersRef.current.clear();
+    await Promise.all(
+      latestTabsRef.current
+        .filter((tab) => tab.stateReady && !tab.opening)
+        .map((tab) => saveDocumentState(tab.id, tab.state)),
+    );
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.paperReader?.onCloseRequest(() => flushPendingSaves().then(() => {
+      window.paperReader?.confirmClose();
+    }).catch(() => {
+      // Closing should not leave the native window stuck if persistence fails.
+      window.paperReader?.confirmClose();
+    }));
+    return unsubscribe;
+  }, [flushPendingSaves]);
 
   const loadOpenedPdf = useCallback(async (opened: OpenedPdf) => {
     const requestId = ++openSequenceRef.current;
@@ -101,7 +137,7 @@ export default function App() {
         stateReady: false,
         opening: true,
         history: [],
-        viewHistory: [{ page: 1, pageOffset: 0, scrollLeft: 0 }],
+        viewHistory: [DEFAULT_VIEW_POSITION],
         viewHistoryIndex: 0,
       },
     ]);
@@ -122,21 +158,28 @@ export default function App() {
 
     setTabs((previous) => previous.map((tab) => {
       if (tab.tabId !== pendingId) return tab;
-      const currentPage = saved.currentPage || 1;
+      const initialPosition = saved.lastViewPosition ?? {
+        ...DEFAULT_VIEW_POSITION,
+        page: saved.currentPage || 1,
+      };
       return {
         ...tab,
         id,
         state: { ...DEFAULT_STATE, ...saved },
         stateReady: true,
         opening: false,
-        viewHistory: [{ page: currentPage, pageOffset: 0, scrollLeft: 0 }],
+        viewHistory: [initialPosition],
         viewHistoryIndex: 0,
       };
     }));
     if (activeTabIdRef.current === pendingId) {
       activeTabIdRef.current = pendingId;
       setActiveTabId(pendingId);
-      requestPage(saved.currentPage || 1);
+      const initialPosition = saved.lastViewPosition ?? {
+        ...DEFAULT_VIEW_POSITION,
+        page: saved.currentPage || 1,
+      };
+      requestPage(initialPosition.page, initialPosition);
     }
   }, [requestPage]);
 
@@ -196,12 +239,13 @@ export default function App() {
     }));
   }, []);
 
-  const navigateToPage = useCallback((page: number, sourcePosition?: ViewPosition) => {
-    const tabId = activeTabIdRef.current;
-    if (!tabId) return;
+  const navigateToPageForTab = useCallback((tabId: string, page: number, sourcePosition?: ViewPosition) => {
     const tab = tabs.find((item) => item.tabId === tabId);
     if (!tab) return;
-    const next = Math.max(1, Math.min(tab.pageCount || 1, Math.round(page)));
+    const roundedPage = Math.max(1, Math.round(page));
+    const next = tab.pageCount > 0
+      ? Math.min(tab.pageCount, roundedPage)
+      : roundedPage;
     setTabs((previousTabs) => previousTabs.map((item) => {
       if (item.tabId !== tabId) return item;
       const currentIndex = Math.max(0, Math.min(item.viewHistory.length - 1, item.viewHistoryIndex));
@@ -222,13 +266,28 @@ export default function App() {
       const trimmed = entries.slice(-50);
       return {
         ...item,
-        state: { ...item.state, currentPage: next },
+        state: {
+          ...item.state,
+          currentPage: next,
+          lastViewPosition: {
+            page: next,
+            pageOffset: sourcePosition?.page === next ? sourcePosition.pageOffset : 0,
+            scrollLeft: sourcePosition?.scrollLeft ?? currentEntry.scrollLeft,
+          },
+        },
         viewHistory: trimmed,
         viewHistoryIndex: trimmed.length - 1,
       };
     }));
-    requestPage(next);
+    if (activeTabIdRef.current === tabId) {
+      requestPage(next);
+    }
   }, [requestPage, tabs]);
+
+  const navigateToPage = useCallback((page: number, sourcePosition?: ViewPosition) => {
+    const tabId = activeTabIdRef.current;
+    if (tabId) navigateToPageForTab(tabId, page, sourcePosition);
+  }, [navigateToPageForTab]);
 
   const moveViewHistory = useCallback((direction: -1 | 1) => {
     const tabId = activeTabIdRef.current;
@@ -242,7 +301,11 @@ export default function App() {
     setTabs((previousTabs) => previousTabs.map((item) => item.tabId === tabId
       ? {
           ...item,
-          state: { ...item.state, currentPage: nextPosition.page },
+          state: {
+            ...item.state,
+            currentPage: nextPosition.page,
+            lastViewPosition: nextPosition,
+          },
           viewHistoryIndex: nextIndex,
         }
       : item));
@@ -257,9 +320,8 @@ export default function App() {
     setSelectedAnnotationId(null);
     setDictionaryRequest(null);
     const position = tab.viewHistory[tab.viewHistoryIndex] ?? {
-      page: tab.state.currentPage,
-      pageOffset: 0,
-      scrollLeft: 0,
+      ...(tab.state.lastViewPosition ?? DEFAULT_VIEW_POSITION),
+      page: tab.state.lastViewPosition?.page ?? tab.state.currentPage,
     };
     requestPage(position.page, position);
   }, [requestPage, tabs]);
@@ -268,8 +330,17 @@ export default function App() {
     const index = tabs.findIndex((tab) => tab.tabId === tabId);
     if (index < 0) return;
     const closingTab = tabs[index];
+    const pendingSave = saveTimersRef.current.get(tabId);
+    if (pendingSave) {
+      window.clearTimeout(pendingSave);
+      saveTimersRef.current.delete(tabId);
+    }
     if (closingTab.stateReady && !closingTab.opening) {
-      void saveDocumentState(closingTab.id, closingTab.state);
+      const latestPosition = closingTab.viewHistory[closingTab.viewHistoryIndex] ?? closingTab.state.lastViewPosition;
+      const stateToSave = latestPosition
+        ? { ...closingTab.state, currentPage: latestPosition.page, lastViewPosition: latestPosition }
+        : closingTab.state;
+      void saveDocumentState(closingTab.id, stateToSave).catch(() => undefined);
     }
     const nextTabs = tabs.filter((tab) => tab.tabId !== tabId);
     const closingActive = activeTabIdRef.current === tabId;
@@ -325,9 +396,7 @@ export default function App() {
     }));
   }, []);
 
-  const updateCurrentPage = useCallback((position: ViewPosition) => {
-    const tabId = activeTabIdRef.current;
-    if (!tabId) return;
+  const updateCurrentPageForTab = useCallback((tabId: string, position: ViewPosition) => {
     setTabs((previousTabs) => previousTabs.map((tab) => {
       if (tab.tabId !== tabId) return tab;
       const currentIndex = Math.max(0, Math.min(tab.viewHistory.length - 1, tab.viewHistoryIndex));
@@ -339,7 +408,11 @@ export default function App() {
       else viewHistory.push(position);
       return {
         ...tab,
-        state: { ...tab.state, currentPage: position.page },
+        state: {
+          ...tab.state,
+          currentPage: position.page,
+          lastViewPosition: position,
+        },
         viewHistory,
       };
     }));
@@ -418,35 +491,48 @@ export default function App() {
               onPageSelect={navigateToPage}
             />
           )}
-          <PdfViewer
-            key={activeTab.tabId}
-            file={activeDocument.data}
-            annotations={documentState.annotations}
-            scale={documentState.scale}
-            highlightColor={highlightColor}
-            selectedAnnotationId={selectedAnnotationId}
-            requestedPage={requestedPage}
-            onDocumentLoad={(count) => {
-              const tabId = activeTabIdRef.current;
-              if (!tabId) return;
-              setTabs((previousTabs) => previousTabs.map((tab) => tab.tabId === tabId
-                ? { ...tab, pageCount: count }
-                : tab));
-            }}
-            onNavigate={navigateToPage}
-            onCurrentPageChange={updateCurrentPage}
-            onScaleChange={changeScale}
-            onCreateAnnotations={(annotations) => updateState((previous) => ({
-              ...previous,
-              annotations: [...previous.annotations, ...annotations],
-            }))}
-            onLookup={setDictionaryRequest}
-            onSelectAnnotation={(annotation) => setSelectedAnnotationId(annotation?.id ?? null)}
-            onDeleteSelected={() => {
-              if (selectedAnnotation) deleteAnnotation(selectedAnnotation);
-            }}
-            onUndo={undo}
-          />
+          <Suspense fallback={<div className="viewer-loading"><LoaderCircle size={24} className="spin" /><span>正在准备阅读器</span></div>}>
+            <PdfViewer
+              key={activeTab.tabId}
+              file={activeDocument.data}
+              annotations={documentState.annotations}
+              scale={documentState.scale}
+              highlightColor={highlightColor}
+              selectedAnnotationId={selectedAnnotationId}
+              requestedPage={requestedPage}
+              onDocumentLoad={(count) => {
+                const tabId = activeTab.tabId;
+                setTabs((previousTabs) => previousTabs.map((tab) => {
+                  if (tab.tabId !== tabId) return tab;
+                  const currentPosition = tab.state.lastViewPosition ?? tab.viewHistory[tab.viewHistoryIndex] ?? DEFAULT_VIEW_POSITION;
+                  const safePage = Math.max(1, Math.min(count, tab.state.currentPage));
+                  const safePosition = safePage === currentPosition.page
+                    ? currentPosition
+                    : { ...currentPosition, page: safePage, pageOffset: 0 };
+                  const viewHistory = tab.viewHistory.map((position, index) => index === tab.viewHistoryIndex ? safePosition : position);
+                  return {
+                    ...tab,
+                    pageCount: count,
+                    state: { ...tab.state, currentPage: safePage, lastViewPosition: safePosition },
+                    viewHistory,
+                  };
+                }));
+              }}
+              onNavigate={(page, sourcePosition) => navigateToPageForTab(activeTab.tabId, page, sourcePosition)}
+              onCurrentPageChange={(position) => updateCurrentPageForTab(activeTab.tabId, position)}
+              onScaleChange={changeScale}
+              onCreateAnnotations={(annotations) => updateState((previous) => ({
+                ...previous,
+                annotations: [...previous.annotations, ...annotations],
+              }))}
+              onLookup={setDictionaryRequest}
+              onSelectAnnotation={(annotation) => setSelectedAnnotationId(annotation?.id ?? null)}
+              onDeleteSelected={() => {
+                if (selectedAnnotation) deleteAnnotation(selectedAnnotation);
+              }}
+              onUndo={undo}
+            />
+          </Suspense>
           {rightOpen && (
             <AnnotationSidebar
               annotations={documentState.annotations}

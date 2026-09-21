@@ -12,7 +12,9 @@ declare global {
       lookupDictionary(word: string): Promise<OfflineDictionaryRecord | null>;
       minimize(): void;
       toggleMaximize(): void;
-      close(): void;
+      close(): Promise<void>;
+      onCloseRequest(handler: () => void | Promise<void>): () => void;
+      confirmClose(): void;
     };
   }
 }

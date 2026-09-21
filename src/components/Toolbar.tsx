@@ -13,6 +13,7 @@ import {
   Plus,
   RotateCcw,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { HighlightColor } from "../types";
 
 type ToolbarProps = {
@@ -40,6 +41,22 @@ const colors: HighlightColor[] = ["yellow", "coral", "green", "blue"];
 
 export function Toolbar(props: ToolbarProps) {
   const page = Math.max(1, Math.min(props.pageCount || 1, props.currentPage));
+  const [pageDraft, setPageDraft] = useState(String(page));
+
+  useEffect(() => {
+    setPageDraft(String(page));
+  }, [page]);
+
+  const submitPage = () => {
+    const value = Number(pageDraft);
+    if (!Number.isFinite(value)) {
+      setPageDraft(String(page));
+      return;
+    }
+    const next = Math.max(1, Math.min(props.pageCount || 1, Math.round(value)));
+    setPageDraft(String(next));
+    props.onPageChange(next);
+  };
 
   return (
     <div className="toolbar">
@@ -67,12 +84,17 @@ export function Toolbar(props: ToolbarProps) {
             <ChevronLeft size={17} />
           </button>
           <input
-            value={props.hasDocument ? page : ""}
+            value={props.hasDocument ? pageDraft : ""}
             disabled={!props.hasDocument}
             aria-label="当前页"
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              if (Number.isFinite(value)) props.onPageChange(value);
+            inputMode="numeric"
+            onChange={(event) => setPageDraft(event.target.value.replace(/[^0-9]/g, ""))}
+            onBlur={submitPage}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitPage();
+              }
             }}
           />
           <span>/ {props.hasDocument ? props.pageCount : 0}</span>

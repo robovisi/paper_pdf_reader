@@ -9,5 +9,13 @@ contextBridge.exposeInMainWorld("paperReader", {
   lookupDictionary: (word: string) => ipcRenderer.invoke("dictionary:lookup", word),
   minimize: () => ipcRenderer.send("window:minimize"),
   toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
-  close: () => ipcRenderer.send("window:close"),
+  close: () => ipcRenderer.invoke("window:close"),
+  onCloseRequest: (handler: () => void | Promise<void>) => {
+    const listener = () => {
+      void handler();
+    };
+    ipcRenderer.on("window:close-request", listener);
+    return () => ipcRenderer.removeListener("window:close-request", listener);
+  },
+  confirmClose: () => ipcRenderer.send("window:close-confirmed"),
 });

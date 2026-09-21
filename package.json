@@ -9,7 +9,7 @@
     "url": "https://github.com/robovisi/paper_pdf_reader.git"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "type": "module",
   "main": "dist-electron/main.js",
@@ -52,23 +52,23 @@
     }
   },
   "dependencies": {
-    "lucide-react": "latest",
+    "lucide-react": "1.37.0",
     "pdfjs-dist": "5.4.296",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-pdf": "latest"
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-pdf": "10.5.0"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
+    "@types/node": "26.4.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "6.1.1",
     "csv-parse": "^7.0.2",
-    "electron": "latest",
-    "electron-builder": "latest",
-    "typescript": "latest",
-    "vite": "latest",
-    "vite-plugin-electron": "latest",
-    "vite-plugin-electron-renderer": "latest"
+    "electron": "44.0.0",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vite-plugin-electron": "1.1.1",
+    "vite-plugin-electron-renderer": "1.0.0"
   }
 }

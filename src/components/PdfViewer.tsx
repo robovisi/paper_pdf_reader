@@ -63,6 +63,10 @@ export function PdfViewer(props: PdfViewerProps) {
   } | null>(null);
   const registeredPageRequestNonceRef = useRef(0);
   const pageMetricsRef = useRef(new Map<number, { top: number; height: number }>());
+  const pageRatiosRef = useRef(new Map<number, number>());
+  const scrollRafRef = useRef<number | null>(null);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const lastReportedPositionRef = useRef<ViewPosition | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [availableWidth, setAvailableWidth] = useState(900);
   const [pageRatio, setPageRatio] = useState(0.707);
@@ -71,6 +75,15 @@ export function PdfViewer(props: PdfViewerProps) {
   const [selectionSnapshot, setSelectionSnapshot] = useState<SelectionSnapshot | null>(null);
   const [loadError, setLoadError] = useState("");
   const fileValue = useMemo(() => props.file, [props.file]);
+  const annotationsByPage = useMemo(() => {
+    const grouped = new Map<number, Annotation[]>();
+    props.annotations.forEach((annotation) => {
+      const pageAnnotations = grouped.get(annotation.pageIndex) ?? [];
+      pageAnnotations.push(annotation);
+      grouped.set(annotation.pageIndex, pageAnnotations);
+    });
+    return grouped;
+  }, [props.annotations]);
   const pageWidth = Math.max(320, Math.min(880, availableWidth - 56)) * props.scale;
   const placeholderHeight = pageWidth / pageRatio;
 
@@ -92,6 +105,8 @@ export function PdfViewer(props: PdfViewerProps) {
     internalLinkDestinationsRef.current.clear();
     internalLinksRef.current.clear();
     pageMetricsRef.current.clear();
+    pageRatiosRef.current.clear();
+    lastReportedPositionRef.current = null;
     setSelectionSnapshot(null);
     setLoadError("");
   }, [fileValue]);
@@ -338,11 +353,7 @@ export function PdfViewer(props: PdfViewerProps) {
     };
   }, []);
 
-  const updateCurrentPage = () => {
-    const position = getCurrentViewPosition();
-    if (!position) return;
-    props.onCurrentPageChange(position);
-    const pageIndex = position.page - 1;
+  const updateRenderedPages = useCallback((pageIndex: number) => {
     const root = viewerRef.current;
     if (!root) return;
     const pages = Array.from(root.querySelectorAll<HTMLElement>(".pdf-page-shell"));
@@ -354,7 +365,36 @@ export function PdfViewer(props: PdfViewerProps) {
       if (next.size === previous.size && [...next].every((index) => previous.has(index))) return previous;
       return next;
     });
+  }, []);
+
+  const reportCurrentPosition = useCallback((force = false) => {
+    const position = getCurrentViewPosition();
+    if (!position) return;
+    updateRenderedPages(position.page - 1);
+    const previous = lastReportedPositionRef.current;
+    if (!force && previous && sameViewPosition(previous, position, 4)) return;
+    lastReportedPositionRef.current = position;
+    props.onCurrentPageChange(position);
+  }, [getCurrentViewPosition, props.onCurrentPageChange, updateRenderedPages]);
+
+  const updateCurrentPage = () => {
+    if (scrollRafRef.current === null) {
+      scrollRafRef.current = window.requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        reportCurrentPosition();
+      });
+    }
+    if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current);
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      scrollIdleTimerRef.current = null;
+      reportCurrentPosition(true);
+    }, 120);
   };
+
+  useEffect(() => () => {
+    if (scrollRafRef.current !== null) window.cancelAnimationFrame(scrollRafRef.current);
+    if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current);
+  }, []);
 
   const onMouseUp = () => {
     window.setTimeout(() => {
@@ -399,7 +439,8 @@ export function PdfViewer(props: PdfViewerProps) {
       }
       return;
     }
-    event.preventDefault();
+    // Unknown hash links are left to react-pdf's link service. Only resolved
+    // internal destinations are intercepted above.
   };
 
   const onLoadSuccess = (document: PDFDocumentProxy) => {
@@ -448,7 +489,9 @@ export function PdfViewer(props: PdfViewerProps) {
             key={`page-${pageIndex + 1}`}
             style={{
               width: pageWidth,
-              ...(renderedPages.has(pageIndex) ? {} : { height: placeholderHeight }),
+              ...(renderedPages.has(pageIndex)
+                ? {}
+                : { height: pageWidth / (pageRatiosRef.current.get(pageIndex) ?? pageRatio) }),
             }}
           >
             {renderedPages.has(pageIndex) ? (
@@ -464,11 +507,17 @@ export function PdfViewer(props: PdfViewerProps) {
                     top,
                     height: Math.max(1, bottom - top),
                   });
-                  if (pendingDestinationRef.current?.pageIndex === pageIndex) {
-                    setPageMetricsVersion((value) => value + 1);
-                  }
-                  if (pageIndex !== 0) return;
+                  let metricsChanged = false;
                   const viewport = pdfPage.getViewport({ scale: 1 });
+                  if (viewport.width > 0 && viewport.height > 0) {
+                    pageRatiosRef.current.set(pageIndex, viewport.width / viewport.height);
+                    metricsChanged = true;
+                  }
+                  if (pendingDestinationRef.current?.pageIndex === pageIndex) {
+                    metricsChanged = true;
+                  }
+                  if (metricsChanged) setPageMetricsVersion((value) => value + 1);
+                  if (pageIndex !== 0) return;
                   if (viewport.width > 0 && viewport.height > 0) {
                     setPageRatio(viewport.width / viewport.height);
                   }
@@ -493,7 +542,7 @@ export function PdfViewer(props: PdfViewerProps) {
               <div className="page-placeholder" aria-hidden="true" />
             )}
             <div className="highlight-layer">
-              {props.annotations.filter((annotation) => annotation.pageIndex === pageIndex).map((annotation) =>
+              {(annotationsByPage.get(pageIndex) ?? []).map((annotation) =>
                 annotation.rects.map((rect, rectIndex) => (
                   <button
                     type="button"
@@ -693,4 +742,10 @@ function readWordAtPoint(x: number, y: number): SelectionSnapshot | null {
     context: pageText,
     pageIndex: Number(page?.dataset.pageIndex ?? 0),
   };
+}
+
+function sameViewPosition(left: ViewPosition, right: ViewPosition, threshold: number) {
+  return left.page === right.page
+    && Math.abs(left.pageOffset - right.pageOffset) < threshold
+    && Math.abs(left.scrollLeft - right.scrollLeft) < threshold;
 }

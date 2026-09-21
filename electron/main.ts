@@ -7,7 +7,9 @@ type OfflineDictionaryRecord = [string, string, string, string, string, string];
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
-let storeWrite = Promise.resolve();
+let storeWrite: Promise<void> = Promise.resolve();
+let closeRequested = false;
+let closeInProgress = false;
 const dictionaryShards = new Map<string, Promise<Record<string, OfflineDictionaryRecord>>>();
 const DICTIONARY_CACHE_LIMIT = 8;
 
@@ -19,20 +21,54 @@ function storePath() {
 
 async function readStore(): Promise<Record<string, StoredState>> {
   try {
-    return JSON.parse(await fs.readFile(storePath(), "utf8"));
+    const parsed: unknown = JSON.parse(await fs.readFile(storePath(), "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, StoredState>;
   } catch {
     return {};
   }
 }
 
 function writeStore(documentId: string, state: StoredState) {
-  storeWrite = storeWrite.then(async () => {
+  storeWrite = storeWrite.catch(() => undefined).then(async () => {
     const store = await readStore();
     store[documentId] = state;
-    await fs.mkdir(path.dirname(storePath()), { recursive: true });
-    await fs.writeFile(storePath(), JSON.stringify(store), "utf8");
+    const destination = storePath();
+    const temporary = `${destination}.${process.pid}.tmp`;
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(temporary, JSON.stringify(store), "utf8");
+    try {
+      await fs.rename(temporary, destination);
+    } catch (error) {
+      // Windows cannot always replace an existing file with rename. Keep the
+      // temporary write, then fall back to a short direct replacement.
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" && (error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+      await fs.rm(destination, { force: true });
+      await fs.rename(temporary, destination);
+    }
   });
   return storeWrite;
+}
+
+function requestWindowClose() {
+  if (!mainWindow || mainWindow.isDestroyed() || closeRequested || closeInProgress) return;
+  closeRequested = true;
+  mainWindow.webContents.send("window:close-request");
+  // A renderer that is already unloading cannot answer. Avoid leaving a
+  // zombie window if the acknowledgement is lost.
+  setTimeout(() => {
+    if (!closeRequested || !mainWindow || mainWindow.isDestroyed()) return;
+    closeRequested = false;
+    closeInProgress = true;
+    mainWindow.destroy();
+  }, 5000);
+}
+
+function confirmWindowClose() {
+  if (!closeRequested || !mainWindow || mainWindow.isDestroyed()) return;
+  closeRequested = false;
+  closeInProgress = true;
+  mainWindow.close();
 }
 
 function dictionaryShardName(word: string) {
@@ -88,8 +124,13 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("close", (event) => {
+    if (closeInProgress) return;
+    event.preventDefault();
+    requestWindowClose();
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
 
@@ -136,7 +177,10 @@ app.whenReady().then(() => {
     if (mainWindow?.isMaximized()) mainWindow.unmaximize();
     else mainWindow?.maximize();
   });
-  ipcMain.on("window:close", () => mainWindow?.close());
+  ipcMain.handle("window:close", () => {
+    requestWindowClose();
+  });
+  ipcMain.on("window:close-confirmed", () => confirmWindowClose());
 
   createWindow();
   app.on("activate", () => {

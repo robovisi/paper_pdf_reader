@@ -313,6 +313,7 @@ button:disabled {
   background: var(--accent);
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -340,6 +341,7 @@ button:disabled {
   background: #fff;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -924,7 +926,8 @@ button:disabled {
   border-radius: 1px;
   opacity: 0.46;
   mix-blend-mode: multiply;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .highlight-rect.yellow {
@@ -1226,5 +1229,86 @@ button:disabled {
 
   .empty-copy {
     justify-self: center;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --titlebar-height: 34px;
+    --tabs-height: 36px;
+    --toolbar-height: 50px;
+  }
+
+  .title-drag-region {
+    padding: 0 8px;
+  }
+
+  .app-name {
+    font-size: 11px;
+  }
+
+  .title-document {
+    display: none;
+  }
+
+  .window-controls button {
+    width: 40px;
+  }
+
+  .document-tab {
+    min-width: 132px;
+  }
+
+  .toolbar {
+    gap: 4px;
+    overflow-x: auto;
+    padding: 0 6px;
+  }
+
+  .toolbar-group {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+
+  .toolbar-center {
+    flex: 0 0 auto;
+    gap: 4px;
+  }
+
+  .primary-command {
+    min-height: 32px;
+    padding: 0 8px;
+  }
+
+  .color-segment {
+    gap: 5px;
+    padding: 0 6px;
+  }
+
+  .reader-layout.left-open,
+  .reader-layout.right-open,
+  .reader-layout.left-open.right-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .left-sidebar,
+  .right-sidebar {
+    display: none;
+  }
+
+  .empty-workspace {
+    padding: 28px 18px;
+  }
+
+  .empty-document-visual {
+    width: min(230px, 64vw);
+  }
+
+  .empty-copy h1 {
+    font-size: 24px;
+  }
+
+  .dictionary-popover {
+    width: min(360px, calc(100vw - 24px));
   }
 }

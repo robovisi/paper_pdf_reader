@@ -30,10 +30,12 @@ export type VocabularyItem = {
 };
 
 export type DocumentState = {
+  schemaVersion: number;
   annotations: Annotation[];
   vocabulary: VocabularyItem[];
   currentPage: number;
   scale: number;
+  lastViewPosition?: ViewPosition;
 };
 
 export type ViewPosition = {
