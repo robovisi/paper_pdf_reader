@@ -62,6 +62,19 @@ pnpm package:win
 
 安装包输出到 `release/Paper Reader Setup 0.1.0.exe`。
 
+## 自动发布 GitHub Release
+
+仓库配置了 GitHub Actions。发布新版本时，先把 `package.json` 中的版本号改成目标版本并提交，然后创建同名标签：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+推送 `vMAJOR.MINOR.PATCH` 标签后，Windows runner 会自动执行类型检查、构建 NSIS 安装包，并创建 GitHub Release。Release 会包含 `.exe` 安装包、`.blockmap` 和更新元数据文件。也可以在 GitHub Actions 页面手动运行 workflow，但输入的标签必须已经存在，并且必须与 `package.json` 的版本一致。
+
+如果仓库的 Actions 权限默认为只读，请在 GitHub 的 `Settings → Actions → General → Workflow permissions` 中允许 `Read and write permissions`，否则 workflow 无法创建 Release。
+
 ## 当前边界
 
 - 离线词典不依赖网络；少量专有名词、最新缩写或领域术语可能没有收录。
