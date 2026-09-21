@@ -40,7 +40,7 @@
 - `electron/`：Windows 桌面壳层、文件选择、IPC 和本地状态存储。
 - `public/dictionary/`：ECDICT 生成的离线词典分片。
 
-需要 Node.js 22.12 或更高版本，以及 pnpm。
+需要 Node.js 22.13 或更高版本，以及 pnpm。
 
 ```powershell
 pnpm install

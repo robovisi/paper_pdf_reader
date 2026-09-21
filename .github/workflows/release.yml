@@ -36,7 +36,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.12.0
+          node-version: 22.13.0
           cache: pnpm
 
       - name: Validate release version
@@ -69,17 +69,27 @@ jobs:
           if (-not $artifacts) {
             throw "No Windows release artifacts were found in release/."
           }
-          $arguments = @(
-            'release',
-            'create',
-            $env:RELEASE_TAG,
-            '--repo',
-            $env:GITHUB_REPOSITORY,
-            '--title',
-            "Paper Reader $env:RELEASE_TAG",
-            '--generate-notes'
-          ) + $artifacts
-          & gh @arguments
+
+          & gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:RELEASE_TAG already exists; uploading compiled artifacts."
+            & gh release upload $env:RELEASE_TAG @artifacts --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            Write-Host "Creating release $env:RELEASE_TAG with compiled artifacts."
+            $arguments = @(
+              'release',
+              'create',
+              $env:RELEASE_TAG
+            ) + $artifacts + @(
+              '--repo',
+              $env:GITHUB_REPOSITORY,
+              '--title',
+              "Paper Reader $env:RELEASE_TAG",
+              '--generate-notes',
+              '--verify-tag'
+            )
+            & gh @arguments
+          }
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

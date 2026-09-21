@@ -9,7 +9,7 @@
     "url": "https://github.com/robovisi/paper_pdf_reader.git"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "type": "module",
   "main": "dist-electron/main.js",
