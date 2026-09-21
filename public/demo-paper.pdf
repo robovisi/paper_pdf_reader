@@ -1,0 +1,49 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 1635 >>
+stream
+BT /F1 19 Tf 64 728 Td (Robust Learning Systems under Distribution Shift) Tj ET
+BT /F1 10 Tf 64 705 Td (A. Researcher, B. Scientist, and C. Engineer) Tj ET
+BT /F1 10 Tf 64 676 Td (Abstract) Tj ET
+BT /F1 10 Tf 64 657 Td (We present an empirical study of robust inference in latent representation models.) Tj ET
+BT /F1 10 Tf 64 642 Td (The proposed regularization method constrains the model while preserving accuracy.) Tj ET
+BT /F1 10 Tf 64 627 Td (An ablation analysis measures the contribution of every component.) Tj ET
+BT /F1 11 Tf 64 592 Td (1. Introduction) Tj ET
+BT /F1 10 Tf 64 569 Td (Reliable systems must remain robust when observations differ from training data.) Tj ET
+BT /F1 10 Tf 64 554 Td (This requirement is especially important in scientific and safety-critical settings.) Tj ET
+BT /F1 10 Tf 64 539 Td (Our empirical evaluation covers uncertainty, calibration, and generalization.) Tj ET
+BT /F1 11 Tf 64 504 Td (2. Method) Tj ET
+BT /F1 10 Tf 64 481 Td (We learn a latent space and constrain its geometry using a structured objective.) Tj ET
+BT /F1 10 Tf 64 466 Td (Regularization reduces variance without suppressing meaningful representations.) Tj ET
+BT /F1 10 Tf 64 451 Td (Inference is performed with a lightweight approximation at test time.) Tj ET
+BT /F1 11 Tf 64 416 Td (3. Results) Tj ET
+BT /F1 10 Tf 64 393 Td (The robust model improves mean accuracy from 81.4 percent to 87.9 percent.) Tj ET
+BT /F1 10 Tf 64 378 Td (Ablation results indicate that both constraints contribute to the final score.) Tj ET
+BT /F1 10 Tf 64 363 Td (These findings support the proposed approach across all evaluated datasets.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1998
+%%EOF

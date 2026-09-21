@@ -1,0 +1,74 @@
+{
+  "name": "paper-reader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Windows-first desktop PDF reader for research papers",
+  "author": "Paper Reader",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robovisi/paper_pdf_reader.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dictionary:build": "node scripts/build-dictionary.mjs",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false",
+    "package:win": "pnpm build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.paperreader.desktop",
+    "productName": "Paper Reader",
+    "directories": {
+      "output": "release"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.svg",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "lucide-react": "latest",
+    "pdfjs-dist": "5.4.296",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-pdf": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "csv-parse": "^7.0.2",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vite-plugin-electron": "latest",
+    "vite-plugin-electron-renderer": "latest"
+  }
+}

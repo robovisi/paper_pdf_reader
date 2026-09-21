@@ -1,0 +1,13 @@
+node_modules/
+.cache/
+dist/
+dist-electron/
+release/
+tmp/
+*.tsbuildinfo
+*.log
+pnpm-debug.log*
+.env
+.env.*
+!.env.example
+.DS_Store
