@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare Electron runtime
+        run: pnpm exec electron --version
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -19,7 +19,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
-    "package:win": "pnpm build && electron-builder --win nsis"
+    "package:win": "pnpm exec electron --version && pnpm build && electron-builder --win nsis"
   },
   "build": {
     "appId": "com.paperreader.desktop",
